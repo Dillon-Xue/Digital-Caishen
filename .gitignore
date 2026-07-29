@@ -45,4 +45,4 @@ app.*.map.json
 /android/app/release
 
 # Local.properties 含本机 Android SDK 绝对路径，不应入库
-**/android/local.properties
+**/android/**/local.properties
