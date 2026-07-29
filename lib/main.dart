@@ -15,7 +15,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final persistence = await Persistence.create();
   final snapshot = persistence.load();
-  final clock = () => DateTime.now().millisecondsSinceEpoch;
+  int clock() => DateTime.now().millisecondsSinceEpoch;
   final manager = snapshot == null
       ? IncenseManager(now: clock)
       : IncenseManager.fromSnapshot(snapshot, now: clock);

@@ -19,7 +19,9 @@ class _IngotDropLayerState extends State<IngotDropLayer> {
   void initState() {
     super.initState();
     _sub = widget.state.ingotDrops.listen((count) {
-      for (var i = 0; i < count; i++) _spawn();
+      for (var i = 0; i < count; i++) {
+        _spawn();
+      }
     });
   }
 

@@ -46,3 +46,6 @@ app.*.map.json
 
 # Local.properties 含本机 Android SDK 绝对路径，不应入库
 **/android/**/local.properties
+
+# 原始带水印素材备份，仅本地保留
+assets/source/clean_backup/

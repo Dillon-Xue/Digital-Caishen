@@ -26,9 +26,8 @@ class IncenseManager {
   IncenseManager({
     required this.now,
     List<IncenseGroup> groups = const [],
-    int totalCoins = 0,
-  })  : _groups = List.from(groups),
-        _totalCoins = totalCoins;
+    this._totalCoins = 0,
+  })  : _groups = List.from(groups);
 
   int get totalCoins => _totalCoins;
 
