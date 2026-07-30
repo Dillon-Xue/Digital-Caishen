@@ -8,8 +8,11 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.app.PendingIntent
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -42,6 +45,11 @@ class FloatingWindowService : Service() {
     private var moveParamStartX = 0
     private var moveParamStartY = 0
     private var moved = false
+
+    // 长按收起：按住静止超过阈值则隐藏悬浮窗
+    private val longPressHandler = Handler(Looper.getMainLooper())
+    private var longPressRunnable: Runnable? = null
+    private var longPressed = false
 
     companion object {
         const val CHANNEL = "floating_window"
@@ -85,8 +93,17 @@ class FloatingWindowService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIF_ID, buildNotification())
-        addOverlay()
+        when (intent?.action) {
+            "toggle" -> {
+                // 通知栏点击：切换显示/隐藏
+                if (overlayView != null) removeOverlay() else addOverlay()
+                updateNotification()
+            }
+            else -> {
+                addOverlay()
+                startForeground(NOTIF_ID, buildNotification())
+            }
+        }
         return START_STICKY
     }
 
@@ -137,19 +154,32 @@ class FloatingWindowService : Service() {
                     moveParamStartY = it.y
                 }
                 moved = false
+                longPressed = false
+                // 按住静止超过 500ms 视为长按 -> 收起悬浮窗
+                longPressRunnable = Runnable {
+                    longPressed = true
+                    hideAndNotify()
+                }
+                longPressHandler.postDelayed(longPressRunnable!!, 500)
             }
             MotionEvent.ACTION_MOVE -> {
                 val dx = (event.rawX - moveStartX).toInt()
                 val dy = (event.rawY - moveStartY).toInt()
-                if (kotlin.math.abs(dx) > 5 || kotlin.math.abs(dy) > 5) moved = true
-                params?.let {
-                    it.x = moveParamStartX + dx
-                    it.y = moveParamStartY + dy
-                    windowManager.updateViewLayout(overlayView, it)
+                if (kotlin.math.abs(dx) > 5 || kotlin.math.abs(dy) > 5) {
+                    moved = true
+                    // 发生移动则取消长按判定，转为拖拽
+                    longPressRunnable?.let { longPressHandler.removeCallbacks(it) }
+                    params?.let {
+                        it.x = moveParamStartX + dx
+                        it.y = moveParamStartY + dy
+                        windowManager.updateViewLayout(overlayView, it)
+                    }
                 }
             }
             MotionEvent.ACTION_UP -> {
-                if (!moved) {
+                longPressRunnable?.let { longPressHandler.removeCallbacks(it) }
+                if (!moved && !longPressed) {
+                    // 轻点 -> 通知 Flutter 触发上香
                     channel.invokeMethod("onClick", null)
                 }
             }
@@ -166,12 +196,33 @@ class FloatingWindowService : Service() {
 
     private fun buildNotification(): Notification {
         createChannel()
+        // 点击通知 -> 切换显示/隐藏
+        val toggleIntent = Intent(this, FloatingWindowService::class.java).apply {
+            action = "toggle"
+        }
+        val piFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        else
+            PendingIntent.FLAG_UPDATE_CURRENT
+        val pi = PendingIntent.getService(this, 0, toggleIntent, piFlags)
+        val text = if (overlayView != null) "运行中 · 点击隐藏" else "已隐藏 · 点击恢复显示"
         return Notification.Builder(this, NOTIF_CHANNEL)
             .setContentTitle("财神驾到")
-            .setContentText("悬浮窗运行中")
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .setOngoing(true)
+            .setContentIntent(pi)
             .build()
+    }
+
+    private fun updateNotification() {
+        val mgr = getSystemService(NotificationManager::class.java)
+        mgr.notify(NOTIF_ID, buildNotification())
+    }
+
+    private fun hideAndNotify() {
+        removeOverlay()
+        updateNotification()
     }
 
     private fun createChannel() {

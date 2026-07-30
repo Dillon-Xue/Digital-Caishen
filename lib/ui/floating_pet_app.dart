@@ -22,10 +22,11 @@ class _FloatingPetHomeState extends State<FloatingPetHome> {
   @override
   void initState() {
     super.initState();
-    // 接收原生层转发的「轻点」事件，触发上香。
+    // 接收原生层转发的「轻点」事件，触发上香 + 互动反馈。
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'onClick') {
         widget.state.light();
+        widget.state.notifyTap();
         return true;
       }
       return null;

@@ -19,6 +19,13 @@ class AppState extends ChangeNotifier {
   /// 元宝掉落事件流（每结算完成一组香，发出掉落数量），供动画层订阅。
   Stream<int> get ingotDrops => _ingotDropController.stream;
 
+  final StreamController<void> _tapController =
+      StreamController<void>.broadcast();
+
+  /// 悬浮窗内轻点事件流（每次点击都发出，无论是否成功上香），用于触发
+  /// 点头动画、祝福气泡、撒金币等互动反馈。
+  Stream<void> get tapEvents => _tapController.stream;
+
   AppState(this._manager, this._persistence) {
     _settleAndPersist(); // 离线补偿
     _startTicker();
@@ -41,6 +48,10 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  /// 触发一次悬浮窗轻点的互动反馈（点头/祝福气泡/撒金币）。
+  /// 不论 [light] 是否成功都调用，保证每次点击都有反馈。
+  void notifyTap() => _tapController.add(null);
+
   List<IncenseGroup> _settleAndPersist() {
     final done = _manager.settle();
     if (done.isNotEmpty) _persist();
@@ -61,6 +72,7 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _timer?.cancel();
     _ingotDropController.close();
+    _tapController.close();
     super.dispose();
   }
 }
