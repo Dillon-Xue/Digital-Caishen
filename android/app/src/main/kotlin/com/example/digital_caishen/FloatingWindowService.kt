@@ -25,7 +25,8 @@ import io.flutter.plugin.common.MethodChannel
  * 系统级悬浮窗服务：
  * - 独立 FlutterEngine 渲染桌面宠物（floatingMain 入口）
  * - 通过 WindowManager 叠加到所有应用之上
- * - FLAG_NOT_TOUCH_MODAL：窗口矩形内的点击交给 Flutter（上香），矩形外透传下层应用
+ * - FLAG_NOT_FOCUSABLE | FLAG_NOT_TOUCH_MODAL：窗口不抢焦点（输入法/其他 App 正常），
+ *   矩形内点击交给 Flutter（上香），矩形外触摸透传下层应用
  * - 原生处理拖拽，轻点（无位移）通过 MethodChannel 回调 Flutter 的 onClick
  */
 class FloatingWindowService : Service() {
@@ -105,8 +106,8 @@ class FloatingWindowService : Service() {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else
                 WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                    or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
