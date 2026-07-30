@@ -9,10 +9,16 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.FrameLayout
+import io.flutter.embedding.android.FlutterTextureView
 import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.dart.DartExecutor
@@ -30,19 +36,30 @@ class FloatingWindowService : Service() {
     private lateinit var flutterEngine: FlutterEngine
     private lateinit var channel: MethodChannel
     private lateinit var windowManager: WindowManager
-    private var flutterView: FlutterView? = null
+    private var overlayView: ViewGroup? = null
     private var params: WindowManager.LayoutParams? = null
 
-    private var startX = 0f
-    private var startY = 0f
-    private var paramStartX = 0
-    private var paramStartY = 0
+    private var moveStartX = 0f
+    private var moveStartY = 0f
+    private var moveParamStartX = 0
+    private var moveParamStartY = 0
     private var moved = false
+
+    private var resizeStartX = 0f
+    private var resizeStartY = 0f
+    private var resizeStartW = 0
+    private var resizeStartH = 0
 
     companion object {
         const val CHANNEL = "floating_window"
         const val NOTIF_ID = 1
         const val NOTIF_CHANNEL = "floating_service"
+
+        // 默认悬浮窗尺寸（dp）
+        const val DEFAULT_SIZE_DP = 220
+        const val MIN_SIZE_DP = 140
+        const val MAX_SIZE_DP = 380
+        const val HANDLE_SIZE_DP = 28
     }
 
     override fun onCreate() {
@@ -68,7 +85,7 @@ class FloatingWindowService : Service() {
                     params?.let {
                         it.x = x
                         it.y = y
-                        windowManager.updateViewLayout(flutterView, it)
+                        windowManager.updateViewLayout(overlayView, it)
                     }
                     result.success(true)
                 }
@@ -84,13 +101,17 @@ class FloatingWindowService : Service() {
     }
 
     private fun addOverlay() {
-        if (flutterView != null) return
-        val view = FlutterView(this)
-        view.attachToFlutterEngine(flutterEngine)
+        if (overlayView != null) return
 
+        // 使用 FlutterTextureView 以支持真透明背景。
+        val flutterView = FlutterView(this, FlutterTextureView(this))
+        flutterView.attachToFlutterEngine(flutterEngine)
+        flutterView.setBackgroundColor(Color.TRANSPARENT)
+
+        val sizePx = dp2px(DEFAULT_SIZE_DP)
         params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            sizePx,
+            sizePx,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else
@@ -100,52 +121,118 @@ class FloatingWindowService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 0
-            y = 240
+            x = dp2px(16)
+            y = dp2px(120)
         }
 
-        view.setOnTouchListener { _, event -> handleTouch(event) }
-        flutterView = view
-        windowManager.addView(view, params)
+        val container = FrameLayout(this)
+        container.addView(
+            flutterView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        // 右下角调整大小手柄
+        val handleSize = dp2px(HANDLE_SIZE_DP)
+        val handle = View(this).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadii = floatArrayOf(
+                    handleSize.toFloat(), handleSize.toFloat(),
+                    0f, 0f,
+                    0f, 0f,
+                    handleSize.toFloat(), handleSize.toFloat()
+                )
+                setColor(Color.parseColor("#80FFFFFF"))
+            }
+            setOnTouchListener { _, event -> handleResize(event) }
+        }
+        container.addView(
+            handle,
+            FrameLayout.LayoutParams(handleSize, handleSize).apply {
+                gravity = Gravity.BOTTOM or Gravity.END
+                marginEnd = dp2px(6)
+                bottomMargin = dp2px(6)
+            }
+        )
+
+        // Flutter 区域负责移动和点击上香
+        flutterView.setOnTouchListener { _, event -> handleTouch(event) }
+
+        overlayView = container
+        windowManager.addView(container, params)
     }
 
     private fun removeOverlay() {
-        flutterView?.let {
+        overlayView?.let {
             windowManager.removeView(it)
-            flutterView = null
+            overlayView = null
         }
     }
 
     private fun handleTouch(event: MotionEvent): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                startX = event.rawX
-                startY = event.rawY
+                moveStartX = event.rawX
+                moveStartY = event.rawY
                 params?.let {
-                    paramStartX = it.x
-                    paramStartY = it.y
+                    moveParamStartX = it.x
+                    moveParamStartY = it.y
                 }
                 moved = false
             }
             MotionEvent.ACTION_MOVE -> {
-                val dx = (event.rawX - startX).toInt()
-                val dy = (event.rawY - startY).toInt()
+                val dx = (event.rawX - moveStartX).toInt()
+                val dy = (event.rawY - moveStartY).toInt()
                 if (kotlin.math.abs(dx) > 5 || kotlin.math.abs(dy) > 5) moved = true
                 params?.let {
-                    it.x = paramStartX + dx
-                    it.y = paramStartY + dy
-                    windowManager.updateViewLayout(flutterView, it)
+                    it.x = moveParamStartX + dx
+                    it.y = moveParamStartY + dy
+                    windowManager.updateViewLayout(overlayView, it)
                 }
             }
             MotionEvent.ACTION_UP -> {
                 if (!moved) {
-                    // 轻点 -> 通知 Flutter 触发上香
                     channel.invokeMethod("onClick", null)
                 }
             }
         }
         return true
     }
+
+    private fun handleResize(event: MotionEvent): Boolean {
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                resizeStartX = event.rawX
+                resizeStartY = event.rawY
+                params?.let {
+                    resizeStartW = it.width
+                    resizeStartH = it.height
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val dx = (event.rawX - resizeStartX).toInt()
+                val dy = (event.rawY - resizeStartY).toInt()
+                val minPx = dp2px(MIN_SIZE_DP)
+                val maxPx = dp2px(MAX_SIZE_DP)
+                params?.let {
+                    it.width = (resizeStartW + dx).coerceIn(minPx, maxPx)
+                    it.height = (resizeStartH + dy).coerceIn(minPx, maxPx)
+                    windowManager.updateViewLayout(overlayView, it)
+                }
+            }
+        }
+        return true
+    }
+
+    private fun dp2px(dp: Int): Int =
+        TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            dp.toFloat(),
+            resources.displayMetrics
+        ).toInt()
 
     private fun buildNotification(): Notification {
         createChannel()

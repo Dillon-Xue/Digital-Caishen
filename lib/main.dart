@@ -26,7 +26,10 @@ void main() async {
 
   runApp(MaterialApp(
     title: '财神驾到',
-    theme: ThemeData(scaffoldBackgroundColor: Colors.white),
+    theme: ThemeData(
+      // 悬浮窗引擎需要真透明背景；控制面板保持白底。
+      scaffoldBackgroundColor: floating ? Colors.transparent : Colors.white,
+    ),
     // 悬浮窗需透明背景，仅显示神台、其余区域透出下层应用。
     color: floating ? const Color(0x00000000) : null,
     home: floating ? FloatingPetHome(state: state) : ControlPanel(state: state),

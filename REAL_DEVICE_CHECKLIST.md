@@ -13,6 +13,8 @@ APK 路径：`build/app/outputs/flutter-apk/app-release.apk`
 ## 悬浮窗行为
 
 - [ ] 悬浮窗显示财神神台，背景透明，能看到桌面/下方应用内容
+  - 注：黑底问题已修复（FlutterView 改用 FlutterTextureView + Dart 层 scaffold 背景透明），需真机确认实际透出效果
+- [ ] 悬浮窗默认约 220dp，右下角有半透明白色圆角手柄，拖拽可在 140~380dp 间实时调整大小
 - [ ] 悬浮窗区域不遮挡底部导航栏、状态栏操作
 - [ ] 点击悬浮窗主体（财神/香炉）可触发交互，点击空白透明区域事件穿透到下方应用
 - [ ] 悬浮窗始终置顶，切换应用后仍在最上层
@@ -50,3 +52,4 @@ APK 路径：`build/app/outputs/flutter-apk/app-release.apk`
 ## 未决/已知问题
 
 - 金元宝底部存在极少量（约 5~10 像素）半透明灰边残留，在小尺寸悬浮窗中几乎不可见。
+- 黑底/全屏问题已修复：FlutterView 改用 FlutterTextureView，Dart 层 scaffold 背景设为透明，窗口默认 220dp 并支持右下角拖拽手柄缩放（FloatingWindowService.kt）。实际透明与缩放效果待真机确认。
